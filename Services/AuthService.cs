@@ -27,7 +27,7 @@ public class AuthService(UserDbContext context, IConfiguration configuration) : 
         return user;
     }
 
-    public async Task<string?> LoginAsync(UserDto request)
+    public async Task<TokenResponseDto?> LoginAsync(UserDto request)
     {
         var user = await context.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
         if (user == null)
@@ -54,13 +54,42 @@ public class AuthService(UserDbContext context, IConfiguration configuration) : 
         return response;
     }
 
+    private async Task<User?> ValidateRefreshTokenAsync(Guid userId, string refreshToken)
+    {
+        var user = await context.Users.FindAsync(userId); 
+        if (user == null || user.RefreshToken != refreshToken || user.RefreshTokenExpiryTime < DateTime.Now)
+        {
+            return null;
+        }
+
+        return user;
+    }
+
+    public async Task<TokenResponseDto?> RefreshTokenAsync(RefreshTokenRequestDto request)
+    {
+        var user = await ValidateRefreshTokenAsync(request.UserId, request.RefreshToken);
+        if (user == null)
+        {
+            return null;
+        }
+
+        var newRefreshToken = await GenerateAndSaveRefreshToken(user);
+        var accessToken = GenerateToken(user);
+
+        return new TokenResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = newRefreshToken
+        };
+    }
+
     private string GenerateRefreshToken()
     {
         var randomNumber = new byte[32];
         using var rng = RandomNumberGenerator.Create();
-        
-            rng.GetBytes(randomNumber);
-        
+
+        rng.GetBytes(randomNumber);
+
         return Convert.ToBase64String(randomNumber);
     }
     
